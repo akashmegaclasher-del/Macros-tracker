@@ -65,6 +65,7 @@ def main():
     st.title("🥗 Personal Macro Tracker")
 
     # --- Date Selector ---
+    # FIX: Always get the current date inside the main app function
     today = datetime.now().date()
     
     # Get unique dates from the log DataFrame as date objects
@@ -84,7 +85,7 @@ def main():
     if 'selected_date' not in st.session_state:
         st.session_state.selected_date = today
 
-    # If the stored selected date is somehow invalid, reset to today
+    # If the stored selected date is somehow invalid (e.g., from a past session), reset to today
     if st.session_state.selected_date not in available_dates:
         st.session_state.selected_date = today
 
@@ -93,14 +94,16 @@ def main():
     with col_today:
         if st.button("📅 Today"):
             st.session_state.selected_date = today
-            st.rerun() # Rerun to reflect the change immediately
+            st.rerun() 
 
     with col_dropdown:
+        # The key for the selectbox is now just 'date_selector'
         selected_date = st.selectbox(
             "Select date to view log",
             options=available_dates,
             format_func=lambda d: date_display_map[d],
-            key='date_selector' 
+            key='date_selector',
+            index=available_dates.index(st.session_state.selected_date) # Set index based on session state
         )
     
     # Update session state if the user changes the date
@@ -121,7 +124,7 @@ def main():
     else:
         st.info("No items logged for this date.")
 
-    # --- Food Logging & Display (unchanged from previous correct versions) ---
+    # --- Food Logging & Display ---
     st.markdown("---")
     col_food, col_log = st.columns([2, 1.5])
     with col_food:
@@ -132,7 +135,9 @@ def main():
         for index, row in filtered_df.iterrows():
             food_name = row['food_name'].replace('_', ' ').title()
             with st.popover(f"**{food_name}**"):
-                with st.form(key=f"form_{row['food_name']}"):
+                # Use the food name and selected date to create a unique key for the form
+                form_key = f"form_{row['food_name']}_{selected_date.strftime('%Y%m%d')}"
+                with st.form(key=form_key):
                     base_amount_str = row['food_name'].split('_')[-1]
                     unit = "unit(s)"
                     if '100g' in base_amount_str: unit = "grams (g)"
@@ -147,7 +152,7 @@ def main():
                         base_amount = 100.0 if '100g' in base_amount_str else 1.0
                         multiplier = amount / base_amount if base_amount != 1.0 else amount
                         new_entry = {
-                            'date': pd.to_datetime(today),
+                            'date': pd.to_datetime(selected_date), # Log to the selected date
                             'name': food_name,
                             'amount_logged': f"{amount} {unit}",
                             'calories': float(row.get('calories', 0)) * multiplier,
@@ -158,7 +163,7 @@ def main():
                         new_df = pd.DataFrame([new_entry])
                         st.session_state.log_df = pd.concat([st.session_state.log_df, new_df], ignore_index=True)
                         save_log_df(st.session_state.log_df)
-                        st.session_state.selected_date = today
+                        st.session_state.selected_date = selected_date # Stay on the current date
                         st.success(f"Logged {amount} {unit} of {food_name}!")
                         st.rerun()
 
@@ -173,11 +178,10 @@ def main():
                     macros_text = f"🔥 {entry.get('calories',0):.0f} kcal | 💪 {entry.get('protein',0):.1f}g P | 🍞 {entry.get('carbs',0):.1f}g C | 🥑 {entry.get('fat',0):.1f}g F"
                     st.text(macros_text)
                     
-                    if selected_date == today:
-                        if st.button("Delete", key=f"del_{i}", type="secondary"):
-                            st.session_state.log_df.drop(index=i, inplace=True)
-                            save_log_df(st.session_state.log_df)
-                            st.rerun()
+                    if st.button("Delete", key=f"del_{i}", type="secondary"):
+                        st.session_state.log_df.drop(index=i, inplace=True)
+                        save_log_df(st.session_state.log_df)
+                        st.rerun()
 
 if __name__ == "__main__":
     main()
