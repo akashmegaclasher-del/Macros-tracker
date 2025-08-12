@@ -25,9 +25,10 @@ def load_food_database():
 def load_daily_log():
     today = datetime.now().date()
     try:
-        log_df = pd.read_csv(DAILY_LOG_FILE, parse_dates=['date'])
+        log_df = pd.read_csv(DAILY_LOG_FILE, parse_dates=['date'], dayfirst=True)
         cutoff_date = today - timedelta(days=30)
         log_df = log_df[log_df['date'].dt.date >= cutoff_date]
+        log_df['date'] = log_df['date'].dt.strftime('%d/%m/%Y')
         return log_df.to_dict('records')
     except (FileNotFoundError, pd.errors.EmptyDataError):
         return []
@@ -37,9 +38,10 @@ def save_daily_log(log_data):
         pd.DataFrame(columns=['date', 'name', 'amount_logged', 'calories', 'protein', 'carbs', 'fat']).to_csv(DAILY_LOG_FILE, index=False)
     else:
         df = pd.DataFrame(log_data)
-        df['date'] = pd.to_datetime(df['date'])
+        df['date'] = pd.to_datetime(df['date'], format='%d/%m/%Y', dayfirst=True)
         cutoff_date = datetime.now().date() - timedelta(days=30)
         df = df[df['date'].dt.date >= cutoff_date]
+        df['date'] = df['date'].dt.strftime('%d/%m/%Y')
         df.to_csv(DAILY_LOG_FILE, index=False)
 
 # --- Main App ---
@@ -50,23 +52,60 @@ def main():
 
     st.title("🥗 Personal Macro Tracker")
 
-    # --- Date Selector ---
-    available_dates = sorted({entry['date'] for entry in st.session_state.all_logs}, reverse=True)
-    if not available_dates:
-        available_dates = [datetime.now().strftime('%Y-%m-%d')]
+    # --- Date Selector with Today Button ---
+    today_str = datetime.now().strftime('%d/%m/%Y')
 
-    selected_date = st.selectbox("📅 Select date to view log", available_dates)
-    selected_date_obj = pd.to_datetime(selected_date).date()
-    daily_log = [entry for entry in st.session_state.all_logs if pd.to_datetime(entry['date']).date() == selected_date_obj]
+    available_dates = sorted(
+        {entry['date'] for entry in st.session_state.all_logs},
+        key=lambda x: datetime.strptime(x, '%d/%m/%Y'),
+        reverse=True
+    )
+    if today_str not in available_dates:
+        available_dates.insert(0, today_str)
+    else:
+        available_dates.remove(today_str)
+        available_dates.insert(0, today_str)
+
+    available_dates_display = [
+        f"{d} (Today)" if d == today_str else d for d in available_dates
+    ]
+
+    if 'selected_date' not in st.session_state or st.session_state.selected_date not in available_dates_display:
+        st.session_state.selected_date = f"{today_str} (Today)"
+
+    col_today, col_dropdown = st.columns([0.3, 1])
+    with col_today:
+        if st.button("📅 Today"):
+            st.session_state.selected_date = f"{today_str} (Today)"
+
+    with col_dropdown:
+        # Handle potential index error if selected_date is not in the list
+        try:
+            current_index = available_dates_display.index(st.session_state.selected_date)
+        except ValueError:
+            current_index = 0
+            st.session_state.selected_date = available_dates_display[0]
+
+        selected_display = st.selectbox(
+            "Select date to view log",
+            available_dates_display,
+            index=current_index
+        )
+
+    selected_date = selected_display.replace(" (Today)", "")
+    st.session_state.selected_date = selected_display
+    selected_date_obj = datetime.strptime(selected_date, '%d/%m/%Y').date()
+
+    daily_log = [entry for entry in st.session_state.all_logs if entry['date'] == selected_date]
 
     # --- Daily Totals ---
-    st.subheader(f"📊 Totals for {selected_date_obj.strftime('%B %d, %Y')}")
+    st.subheader(f"📊 Totals for {selected_date}")
     if daily_log:
         total_macros = {
-            'calories': sum(item['calories'] for item in daily_log),
-            'protein': sum(item['protein'] for item in daily_log),
-            'carbs': sum(item['carbs'] for item in daily_log),
-            'fat': sum(item['fat'] for item in daily_log)
+            'calories': sum(item.get('calories', 0) for item in daily_log),
+            'protein': sum(item.get('protein', 0) for item in daily_log),
+            'carbs': sum(item.get('carbs', 0) for item in daily_log),
+            'fat': sum(item.get('fat', 0) for item in daily_log)
         }
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Calories", f"{total_macros['calories']:.0f} kcal")
@@ -79,26 +118,27 @@ def main():
     # --- Download CSV ---
     if st.session_state.all_logs:
         df_export = pd.DataFrame(st.session_state.all_logs)
-        csv_data = df_export.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Last 30 Days Log (CSV)",
-            data=csv_data,
-            file_name="macro_log_last_30_days.csv",
-            mime="text/csv"
-        )
+        if not df_export.empty:
+            df_export['date'] = pd.to_datetime(df_export['date'], format='%d/%m/%Y', dayfirst=True).dt.strftime('%d/%m/%Y')
+            csv_data = df_export.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Last 30 Days Log (CSV)",
+                data=csv_data,
+                file_name="macro_log_last_30_days.csv",
+                mime="text/csv"
+            )
 
-    # --- Trends Chart with Dual Axis & Fixed Colors ---
+    # --- Trends Chart ---
     st.markdown("### 📈 Macro Trends (Last 30 Days)")
     if st.session_state.all_logs:
         df_all = pd.DataFrame(st.session_state.all_logs)
-        df_all['date'] = pd.to_datetime(df_all['date'])
+        df_all['date'] = pd.to_datetime(df_all['date'], format='%d/%m/%Y', dayfirst=True)
         df_trends = df_all.groupby('date', as_index=False).agg({
             'calories': 'sum',
             'protein': 'sum',
             'carbs': 'sum',
             'fat': 'sum'
-        })
-        df_trends = df_trends.sort_values('date')
+        }).sort_values('date')
 
         metrics = ['calories', 'protein', 'carbs', 'fat']
         selected_metrics = st.multiselect(
@@ -108,7 +148,6 @@ def main():
         )
         show_smoothing = st.checkbox("Show 7-day rolling average", value=True)
 
-        # Fixed colors for consistency
         colors = {
             'calories': 'orange',
             'protein': 'blue',
@@ -118,45 +157,47 @@ def main():
 
         if selected_metrics:
             df_plot = df_trends.copy()
-            if show_smoothing:
+            
+            num_days_with_data = df_plot['date'].nunique()
+            plot_mode = 'markers' if num_days_with_data == 1 else 'lines+markers'
+            
+            date_range_days = (df_plot['date'].max() - df_plot['date'].min()).days if num_days_with_data > 1 else 1
+            tick_interval = "D1" if date_range_days <= 14 else "M1"
+
+            if show_smoothing and num_days_with_data > 1:
                 for metric in metrics:
                     df_plot[f"{metric} (7d avg)"] = df_plot[metric].rolling(window=7, min_periods=1).mean()
 
             fig = go.Figure()
 
-            # Calories on left axis
-            for metric in selected_metrics:
-                if metric.startswith("calories"):
-                    col_name = f"{metric} (7d avg)" if show_smoothing else metric
+            def add_trace_to_fig(metric_name, y_axis, plot_mode):
+                fig.add_trace(go.Scatter(
+                    x=df_plot['date'], y=df_plot[metric_name], mode=plot_mode,
+                    name=metric_name, line=dict(color=colors[metric_name]),
+                    yaxis=y_axis, connectgaps=False
+                ))
+                if show_smoothing and num_days_with_data > 1:
                     fig.add_trace(go.Scatter(
-                        x=df_plot['date'], y=df_plot[col_name],
-                        mode='lines+markers',
-                        name=col_name,
-                        line=dict(color=colors['calories']),
-                        yaxis="y1"
+                        x=df_plot['date'], y=df_plot[f"{metric_name} (7d avg)"], mode='lines',
+                        name=f"{metric_name} (7d avg)", line=dict(color=colors[metric_name], dash='dash'),
+                        yaxis=y_axis
                     ))
 
-            # Other macros on right axis
-            for metric in selected_metrics:
-                if metric != "calories":
-                    col_name = f"{metric} (7d avg)" if show_smoothing else metric
-                    fig.add_trace(go.Scatter(
-                        x=df_plot['date'], y=df_plot[col_name],
-                        mode='lines+markers',
-                        name=col_name,
-                        line=dict(color=colors[metric]),
-                        yaxis="y2"
-                    ))
+            if 'calories' in selected_metrics:
+                add_trace_to_fig('calories', 'y1', plot_mode)
+            for metric in ['protein', 'carbs', 'fat']:
+                if metric in selected_metrics:
+                    add_trace_to_fig(metric, 'y2', plot_mode)
 
             fig.update_layout(
-                xaxis=dict(title="Date"),
-                yaxis=dict(title="Calories", side="left"),
-                yaxis2=dict(title="Protein / Carbs / Fat (g)", overlaying="y", side="right"),
-                legend=dict(orientation="h", y=-0.3),
-                margin=dict(l=40, r=40, t=40, b=40),
+                xaxis=dict(title="Date", type='date', range=[df_plot['date'].min() - timedelta(days=1), df_plot['date'].max() + timedelta(days=1)]),
+                yaxis=dict(title="Calories", side="left", rangemode="tozero"),
+                yaxis2=dict(title="Protein / Carbs / Fat (g)", overlaying="y", side="right", rangemode="tozero"),
+                legend=dict(orientation="h", y=-0.25),
+                margin=dict(l=40, r=40, t=40, b=80),
                 height=500
             )
-
+            fig.update_xaxes(tickformat="%d/%m", tickangle=-45, dtick=tick_interval)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Select at least one metric to display.")
@@ -175,24 +216,27 @@ def main():
 
         for _, row in filtered_df.iterrows():
             food_name = row['food_name'].replace('_', ' ').title()
-            with st.expander(f"**{food_name}**", expanded=False):
-                base_amount_str = row['food_name'].split('_')[-1]
-                unit = "unit(s)"
-                if '100g' in base_amount_str: unit = "grams (g)"
-                elif 'katori' in base_amount_str: unit = "katori(s)"
-                elif 'tbsp' in base_amount_str: unit = "tablespoon(s)"
-                elif 'scoop' in base_amount_str: unit = "scoop(s)"
-                elif 'slice' in base_amount_str: unit = "slice(s)"
-                elif 'medium' in base_amount_str: unit = "item(s)"
+            
+            with st.popover(f"**{food_name}**"):
+                with st.form(key=f"form_{row['food_name']}"):
+                    base_amount_str = row['food_name'].split('_')[-1]
+                    unit = "unit(s)"
+                    if '100g' in base_amount_str: unit = "grams (g)"
+                    elif 'katori' in base_amount_str: unit = "katori(s)"
+                    elif 'tbsp' in base_amount_str: unit = "tablespoon(s)"
+                    elif 'scoop' in base_amount_str: unit = "scoop(s)"
+                    elif 'slice' in base_amount_str: unit = "slice(s)"
+                    elif 'medium' in base_amount_str: unit = "item(s)"
 
-                amount = st.number_input(f"Amount ({unit})", min_value=0.1, value=1.0, step=0.1, key=f"amount_{row['food_name']}")
+                    amount = st.number_input(f"Amount ({unit})", min_value=0.1, value=1.0, step=0.1)
+                    submit = st.form_submit_button("Log Food")
 
-                if st.button("Log Food", key=f"btn_{row['food_name']}"):
+                if submit:
                     base_amount = 100.0 if '100g' in base_amount_str else 1.0
                     multiplier = amount / base_amount if base_amount != 1.0 else amount
 
                     new_entry = {
-                        'date': datetime.now().strftime('%Y-%m-%d'),
+                        'date': today_str,
                         'name': food_name,
                         'amount_logged': f"{amount} {unit}",
                         'calories': row['calories'] * multiplier,
@@ -202,31 +246,38 @@ def main():
                     }
                     st.session_state.all_logs.insert(0, new_entry)
                     save_daily_log(st.session_state.all_logs)
+                    st.session_state.selected_date = f"{today_str} (Today)"
                     st.success(f"Logged {amount} {unit} of {food_name}!")
                     st.rerun()
 
     # --- Daily Log Display ---
     with col_log:
-        st.subheader(f"📝 Log for {selected_date_obj.strftime('%B %d, %Y')}")
+        st.subheader(f"📝 Log for {selected_date}")
         if not daily_log:
             st.write("No items logged.")
         else:
             for i, entry in enumerate(daily_log):
                 with st.container(border=True):
-                    st.markdown(f"**{entry['name']}** ({entry['amount_logged']})")
+                    st.markdown(f"**{entry['name']}** ({entry.get('amount_logged', '')})")
                     macros_text = (
-                        f"🔥 {entry['calories']:.0f} kcal | "
-                        f"💪 {entry['protein']:.1f}g P | "
-                        f"🍞 {entry['carbs']:.1f}g C | "
-                        f"🥑 {entry['fat']:.1f}g F"
+                        f"🔥 {entry.get('calories', 0):.0f} kcal | "
+                        f"💪 {entry.get('protein', 0):.1f}g P | "
+                        f"🍞 {entry.get('carbs', 0):.1f}g C | "
+                        f"🥑 {entry.get('fat', 0):.1f}g F"
                     )
                     st.text(macros_text)
                     if selected_date_obj == datetime.now().date():
-                        idx_in_all = st.session_state.all_logs.index(entry)
-                        if st.button("Delete", key=f"del_{i}", type="secondary"):
-                            st.session_state.all_logs.pop(idx_in_all)
-                            save_daily_log(st.session_state.all_logs)
-                            st.rerun()
+                        # Use a more robust key for the delete button
+                        entry_id = f"{entry.get('date', '')}_{entry.get('name', '')}_{entry.get('amount_logged', '')}_{i}"
+                        if st.button("Delete", key=f"del_{entry_id}", type="secondary"):
+                            try:
+                                st.session_state.all_logs.remove(entry)
+                                save_daily_log(st.session_state.all_logs)
+                                st.session_state.selected_date = f"{today_str} (Today)"
+                                st.rerun()
+                            except ValueError:
+                                # This handles the rare case where the entry is already gone
+                                st.rerun()
 
 if __name__ == "__main__":
     main()
