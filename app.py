@@ -25,10 +25,10 @@ def load_food_database():
 def load_log_df():
     """Loads the log file into a DataFrame with a proper datetime column."""
     try:
-        # Load data and convert 'date' column to datetime objects
         log_df = pd.read_csv(DAILY_LOG_FILE)
+        # Convert date column to datetime objects, trying different formats
         log_df['date'] = pd.to_datetime(log_df['date'], dayfirst=True, errors='coerce')
-        log_df.dropna(subset=['date'], inplace=True) # Remove rows where date could not be parsed
+        log_df.dropna(subset=['date'], inplace=True) # Remove rows that couldn't be parsed
         return log_df
     except (FileNotFoundError, pd.errors.EmptyDataError):
         # Return an empty DataFrame with correct columns if file is missing or empty
