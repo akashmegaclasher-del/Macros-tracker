@@ -8,10 +8,20 @@ from google.oauth2.service_account import Credentials
 # Google Sheets Setup
 # ============================
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-creds = Credentials.from_service_account_info(
-    st.secrets["gcp_service_account"], scopes=SCOPES
+import gspread
+import streamlit as st
+
+# Define the necessary scopes
+scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+# Authorize the client with the defined scopes
+client = gspread.service_account_from_dict(
+    st.secrets["gcp_service_account"],
+    scopes=scopes
 )
-client = gspread.authorize(creds)
 
 SPREADSHEET_NAME = "MacroTracker"
 sheet = client.open(SPREADSHEET_NAME)
