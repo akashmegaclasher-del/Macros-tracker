@@ -304,10 +304,10 @@ if item_to_delete_index is not None:
 # ---------------- DAILY SUMMARY ---------------- #
 st.subheader("📈 Daily Summary")
 
-calories = today_logs["Calories"].sum() if not today_logs.empty else 0
-protein = today_logs["Protein"].sum() if not today_logs.empty else 0
-carbs = today_logs["Carbs"].sum() if not today_logs.empty else 0
-fat = today_logs["Fat"].sum() if not today_logs.empty else 0
+calories = today_logs["Calories"].sum() if not day_logs.empty else 0
+protein = today_logs["Protein"].sum() if not tday_logs.empty else 0
+carbs = today_logs["Carbs"].sum() if not day_logs.empty else 0
+fat = today_logs["Fat"].sum() if not day_logs.empty else 0
 
 profile_df = fetch_logs(profile_ws, ["Sex", "Age", "Height", "Weight", "Activity", "ManualTDEE"])
 if not profile_df.empty:
