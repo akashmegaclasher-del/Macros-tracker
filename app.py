@@ -240,19 +240,57 @@ for _, row in filtered_df.iterrows():
             st.success(f"Logged {amount} {unit} of {food_name}!")
             st.rerun()
 
-# ---------------- DISPLAY TODAY'S LOG ---------------- #
+# =========================
+# 📊 Today's Logged Food (THE CORRECTED SECTION)
+# =========================
 st.subheader("📊 Today's Logged Food")
 
-df_logs = fetch_logs(food_ws, ["Date", "Food", "Amount (g)", "Calories", "Protein", "Carbs", "Fat"])
-today_logs = df_logs[df_logs["Date"] == get_today()]
+df_logs = pd.DataFrame(st.session_state.all_logs)
+
+EXPECTED_COLUMNS = ['Date', 'Food', 'Amount (g)', 'Calories', 'Protein', 'Carbs', 'Fat']
+if df_logs.empty:
+    df_logs = pd.DataFrame(columns=EXPECTED_COLUMNS)
+
+today_logs = df_logs[df_logs["Date"] == today_str].copy()
+item_to_delete_index = None
 
 if not today_logs.empty:
-    totals = today_logs[["Calories", "Protein", "Carbs", "Fat"]].sum()
-    total_row = pd.DataFrame([["", "TOTAL", "", totals["Calories"], totals["Protein"], totals["Carbs"], totals["Fat"]]],
-                             columns=today_logs.columns)
-    st.table(pd.concat([today_logs, total_row], ignore_index=True))
+    col_food, col_amt, col_cal, col_p, col_c, col_f, col_del = st.columns([3, 2, 2, 2, 2, 2, 1])
+    
+    headers = {"Food": col_food, "Amount": col_amt, "Calories": col_cal, "Protein": col_p, "Carbs": col_c, "Fat": col_f, " ": col_del}
+    for header, col in headers.items():
+        col.write(f"**{header}**")
+
+    for index, row in today_logs.iterrows():
+        col_food.write(row["Food"])
+        col_amt.write(row["Amount (g)"])
+        col_cal.write(f'{row["Calories"]:.1f}')
+        col_p.write(f'{row["Protein"]:.1f}')
+        col_c.write(f'{row["Carbs"]:.1f}')
+        col_f.write(f'{row["Fat"]:.1f}')
+        if col_del.button("❌", key=f"delete_{index}"):
+            item_to_delete_index = index
+
+    numeric_cols = ['Calories', 'Protein', 'Carbs', 'Fat']
+    today_logs[numeric_cols] = today_logs[numeric_cols].apply(pd.to_numeric, errors='coerce')
+    totals = today_logs[numeric_cols].sum()
+
+    st.markdown("---")
+    col_food.markdown("**TOTAL**")
+    col_cal.markdown(f"**{totals['Calories']:.1f}**")
+    col_p.markdown(f"**{totals['Protein']:.1f}**")
+    col_c.markdown(f"**{totals['Carbs']:.1f}**")
+    col_f.markdown(f"**{totals['Fat']:.1f}**")
 else:
-    st.info("No food logged today.")
+    st.info("No food logged today yet.")
+
+if item_to_delete_index is not None:
+    original_list_index = [i for i, log in enumerate(st.session_state.all_logs) if i == item_to_delete_index]
+    if original_list_index:
+        st.session_state.all_logs.pop(original_list_index[0])
+        save_daily_log(st.session_state.all_logs)
+        st.rerun()
+
 
 # ---------------- DAILY SUMMARY ---------------- #
 st.subheader("📈 Daily Summary")
