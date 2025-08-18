@@ -255,25 +255,50 @@ EXPECTED_COLUMNS = ['Date', 'Food', 'Amount (g)', 'Calories', 'Protein', 'Carbs'
 if df_logs.empty:
     df_logs = pd.DataFrame(columns=EXPECTED_COLUMNS)
 
-# Filter logs based on the selected date, not just today's date
+# Filter logs based on the selected date
 day_logs = df_logs[df_logs["Date"] == selected_date_str].copy()
 item_to_delete_index = None
 
-# IMPORTANT: From here on, replace all instances of 'today_logs' with 'day_logs' in this section.
 if not day_logs.empty:
-    # ... the rest of your code for displaying the table and totals continues...
-    # Just make sure to use 'day_logs' instead of 'today_logs'
-    
-    # For example:
+    col_food, col_amt, col_cal, col_p, col_c, col_f, col_del = st.columns([3, 2, 2, 2, 2, 2, 1])
+
+    # Write headers
+    headers = {"Food": col_food, "Amount": col_amt, "Calories": col_cal, "Protein": col_p, "Carbs": col_c, "Fat": col_f, " ": col_del}
+    for header, col in headers.items():
+        col.write(f"**{header}**")
+
+    # THIS IS THE LOOP WITH THE CORRECTLY INDENTED BLOCK
     for index, row in day_logs.iterrows():
-        # ... your column write logic
-    
+        col_food.write(row["Food"])
+        col_amt.write(row["Amount (g)"])
+        col_cal.write(f'{row["Calories"]:.1f}')
+        col_p.write(f'{row["Protein"]:.1f}')
+        col_c.write(f'{row["Carbs"]:.1f}')
+        col_f.write(f'{row["Fat"]:.1f}')
+        if col_del.button("❌", key=f"delete_{index}"):
+            item_to_delete_index = index
+
+    # This part is outside the loop but inside the 'if'
+    numeric_cols = ['Calories', 'Protein', 'Carbs', 'Fat']
+    day_logs[numeric_cols] = day_logs[numeric_cols].apply(pd.to_numeric, errors='coerce')
     totals = day_logs[numeric_cols].sum()
-    # ... and so on
+
+    st.markdown("---")
+    col_food.markdown("**TOTAL**")
+    col_cal.markdown(f"**{totals['Calories']:.1f}**")
+    col_p.markdown(f"**{totals['Protein']:.1f}**")
+    col_c.markdown(f"**{totals['Carbs']:.1f}**")
+    col_f.markdown(f"**{totals['Fat']:.1f}**")
 else:
     st.info(f"No food logged on {selected_date_str}.")
 
-# ... your delete logic continues ...
+# Delete logic remains the same
+if item_to_delete_index is not None:
+    original_list_index = [i for i, log in enumerate(st.session_state.all_logs) if i == item_to_delete_index]
+    if original_list_index:
+        st.session_state.all_logs.pop(original_list_index[0])
+        save_daily_log(st.session_state.all_logs)
+        st.rerun()
 
 
 # ---------------- DAILY SUMMARY ---------------- #
