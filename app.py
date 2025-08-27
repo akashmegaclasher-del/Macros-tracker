@@ -207,93 +207,80 @@ def main():
 
     st.markdown("---")
 
-    # --- Food Logging ---
-    col_food, col_log = st.columns([2, 1.5])
-
-    # Use st.dialog for the logging form
-    if "selected_food" in st.session_state:
-        food_to_log = st.session_state.selected_food
-        food_name_display = food_to_log['food_name'].replace('_', ' ').title()
+    # --- Dialog for Logging New Food ---
+    if "food_to_log" in st.session_state:
+        food_data = st.session_state.food_to_log
+        food_name_display = food_data['food_name'].replace('_', ' ').title()
 
         @st.dialog(f"Log {food_name_display}")
         def log_food_dialog():
             st.subheader(f"Log: {food_name_display}")
+            base_amount_str = food_data['food_name'].split('_')[-1]
+            unit_match = {'100g': 'grams (g)', 'katori': 'katori(s)', 'tbsp': 'tablespoon(s)', 'scoop': 'scoop(s)', 'slice': 'slice(s)', 'medium': 'item(s)'}
+            unit = next((v for k, v in unit_match.items() if k in base_amount_str), "unit(s)")
             
-            # Determine the unit based on food_name
-            base_amount_str = food_to_log['food_name'].split('_')[-1]
-            unit = "unit(s)"
-            if '100g' in base_amount_str: unit = "grams (g)"
-            elif 'katori' in base_amount_str: unit = "katori(s)"
-            elif 'tbsp' in base_amount_str: unit = "tablespoon(s)"
-            elif 'scoop' in base_amount_str: unit = "scoop(s)"
-            elif 'slice' in base_amount_str: unit = "slice(s)"
-            elif 'medium' in base_amount_str: unit = "item(s)"
-
-            amount = st.number_input(f"Amount ({unit})", min_value=0.1, value=1.0, step=0.1, key="log_amount")
+            # This number input will now work correctly inside the dialog
+            amount = st.number_input(f"Amount ({unit})", min_value=0.1, value=1.0, step=0.1)
             
             if st.button("Log Food"):
                 base_amount = 100.0 if '100g' in base_amount_str else 1.0
                 multiplier = amount / base_amount if base_amount != 1.0 else amount
-
-                today_str = datetime.now().strftime('%d/%m/%Y')
                 new_entry = {
-                    'date': today_str,
+                    'date': datetime.now(),
                     'name': food_name_display,
                     'amount_logged': f"{amount} {unit}",
-                    'calories': food_to_log['calories'] * multiplier,
-                    'protein': food_to_log['protein'] * multiplier,
-                    'carbs': food_to_log['carbs'] * multiplier,
-                    'fat': food_to_log['fat'] * multiplier,
+                    'calories': food_data['calories'] * multiplier,
+                    'protein': food_data['protein'] * multiplier,
+                    'carbs': food_data['carbs'] * multiplier,
+                    'fat': food_data['fat'] * multiplier,
                 }
                 st.session_state.all_logs.insert(0, new_entry)
                 save_daily_log(st.session_state.all_logs)
-                st.session_state.selected_date = f"{today_str} (Today)"
-                del st.session_state.selected_food # Clean up session state
+                del st.session_state.food_to_log # Clean up
                 st.rerun()
 
-        # This line calls the dialog function defined above
         log_food_dialog()
 
+    # --- Main Layout (Database and Log) ---
+    col_food, col_log = st.columns([2, 1.5])
 
     with col_food:
         st.subheader("🥑 Food Database")
-        search_query = st.text_input("Search for a food item...", key="search_bar")
+        search_query = st.text_input("Search for a food item...")
         filtered_df = food_df[food_df['food_name'].str.contains(search_query, case=False, na=False)] if search_query else food_df
+        
         st.markdown("Click on a food to log it.")
-
-        # Display each food item as a button
         for _, row in filtered_df.iterrows():
             food_name_display = row['food_name'].replace('_', ' ').title()
-            if st.button(food_name_display, key=f"log_btn_{row['food_name']}", use_container_width=True):
-                # When button is clicked, store the food's data in session_state and rerun
-                st.session_state.selected_food = row.to_dict()
+            if st.button(food_name_display, key=f"log_{row['food_name']}", use_container_width=True):
+                st.session_state.food_to_log = row.to_dict()
                 st.rerun()
 
-    # --- Daily Log Display ---
     with col_log:
         st.subheader(f"📝 Log for {selected_date}")
         if not daily_log:
             st.write("No items logged.")
         else:
-            for i, entry in enumerate(daily_log):
+            # Create a list of indices matching the daily_log to find the original index in all_logs
+            log_indices = [i for i, entry in enumerate(st.session_state.all_logs) if entry['date'].date() == datetime.strptime(selected_date, '%d/%m/%Y').date()]
+            
+            for original_log_index in reversed(log_indices): # Reverse to avoid index errors on deletion
+                entry = st.session_state.all_logs[original_log_index]
                 with st.container(border=True):
-                    st.markdown(f"**{entry['name']}** ({entry.get('amount_logged', '')})")
-                    macros_text = (
-                        f"🔥 {entry.get('calories', 0):.0f} kcal | "
-                        f"💪 {entry.get('protein', 0):.1f}g P | "
-                        f"🍞 {entry.get('carbs', 0):.1f}g C | "
-                        f"🥑 {entry.get('fat', 0):.1f}g F"
-                    )
-                    st.text(macros_text)
-                    if selected_date_obj == datetime.now().date():
-                        entry_id = f"{entry.get('date', '')}_{entry.get('name', '')}_{entry.get('amount_logged', '')}_{i}"
-                        if st.button("Delete", key=f"del_{entry_id}", type="secondary"):
-                            try:
-                                st.session_state.all_logs.remove(entry)
-                                save_daily_log(st.session_state.all_logs)
-                                st.session_state.selected_date = f"{datetime.now().strftime('%d/%m/%Y')} (Today)"
-                                st.rerun()
-                            except ValueError:
-                                st.rerun()
+                    c1, c2 = st.columns([5, 1])
+                    with c1:
+                        st.markdown(f"**{entry['name']}** ({entry.get('amount_logged', '')})")
+                        macros_text = (
+                            f"🔥 {entry.get('calories', 0):.0f} kcal | "
+                            f"💪 {entry.get('protein', 0):.1f}g P | "
+                            f"🍞 {entry.get('carbs', 0):.1f}g C | "
+                            f"🥑 {entry.get('fat', 0):.1f}g F"
+                        )
+                        st.text(macros_text)
+                    with c2:
+                        if st.button("Delete", key=f"del_{original_log_index}", use_container_width=True):
+                            st.session_state.all_logs.pop(original_log__index)
+                            save_daily_log(st.session_state.all_logs)
+                            st.rerun()
 if __name__ == "__main__":
     main()
