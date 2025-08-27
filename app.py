@@ -209,6 +209,10 @@ def main():
 
     # --- Dialog for Logging New Food ---
     if "food_to_log" in st.session_state:
+        # Define the callback function that saves the input's state
+        def update_log_amount():
+            st.session_state.log_amount_value = st.session_state.log_amount_input
+        
         food_data = st.session_state.food_to_log
         food_name_display = food_data['food_name'].replace('_', ' ').title()
 
@@ -219,10 +223,18 @@ def main():
             unit_match = {'100g': 'grams (g)', 'katori': 'katori(s)', 'tbsp': 'tablespoon(s)', 'scoop': 'scoop(s)', 'slice': 'slice(s)', 'medium': 'item(s)'}
             unit = next((v for k, v in unit_match.items() if k in base_amount_str), "unit(s)")
             
-            # This number input will now work correctly inside the dialog
-            amount = st.number_input(f"Amount ({unit})", min_value=0.1, value=1.0, step=0.1)
+            # This number input now uses on_change for robust state handling
+            st.number_input(
+                f"Amount ({unit})", 
+                min_value=0.1, 
+                value=st.session_state.get('log_amount_value', 1.0), # Use the saved value
+                step=0.1, 
+                key="log_amount_input", # Assign a key for the callback
+                on_change=update_log_amount # The callback function
+            )
             
             if st.button("Log Food"):
+                amount = st.session_state.get('log_amount_value', 1.0) # Get the final value
                 base_amount = 100.0 if '100g' in base_amount_str else 1.0
                 multiplier = amount / base_amount if base_amount != 1.0 else amount
                 new_entry = {
@@ -236,7 +248,13 @@ def main():
                 }
                 st.session_state.all_logs.insert(0, new_entry)
                 save_daily_log(st.session_state.all_logs)
-                del st.session_state.food_to_log # Clean up
+                
+                # Clean up session state keys
+                del st.session_state.food_to_log
+                if 'log_amount_value' in st.session_state:
+                    del st.session_state.log_amount_value
+                if 'log_amount_input' in st.session_state:
+                    del st.session_state.log_amount_input
                 st.rerun()
 
         log_food_dialog()
