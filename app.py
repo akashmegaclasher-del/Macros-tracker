@@ -229,7 +229,7 @@ def main():
                     elif 'medium' in base_amount_str: unit = "item(s)"
 
                     if "amount_input" not in st.session_state:
-    st.session_state.amount_input = 1.0
+                        st.session_state.amount_input = 1.0
 
 amount = st.number_input(
     f"Amount ({unit})",
