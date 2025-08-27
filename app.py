@@ -207,56 +207,33 @@ def main():
 
     st.markdown("---")
 
-    # --- Dialog for Logging New Food ---
-    if "food_to_log" in st.session_state:
-        # Define the callback function that saves the input's state
-        def update_log_amount():
-            st.session_state.log_amount_value = st.session_state.log_amount_input
-        
-        food_data = st.session_state.food_to_log
-        food_name_display = food_data['food_name'].replace('_', ' ').title()
+    # --- Form for Logging New Food ---
+if "food_to_log" in st.session_state:
+    food_data = st.session_state.food_to_log
+    food_name_display = food_data['food_name'].replace('_', ' ').title()
 
-        @st.dialog(f"Log {food_name_display}")
-        def log_food_dialog():
-            st.subheader(f"Log: {food_name_display}")
+    with st.expander(f"Log: {food_name_display}", expanded=True):
+        with st.form(key="log_food_form"):
             base_amount_str = food_data['food_name'].split('_')[-1]
-            unit_match = {'100g': 'grams (g)', 'katori': 'katori(s)', 'tbsp': 'tablespoon(s)', 'scoop': 'scoop(s)', 'slice': 'slice(s)', 'medium': 'item(s)'}
-            unit = next((v for k, v in unit_match.items() if k in base_amount_str), "unit(s)")
+            units = {'100g': 'grams (g)', 'scoop': 'scoop(s)', 'slice': 'slice(s)'}
+            unit = next((u for k, u in units.items() if k in base_amount_str), "unit(s)")
+
+            amount = st.number_input(f"Amount ({unit})", min_value=0.1, value=1.0, step=0.1)
             
-            # This number input now uses on_change for robust state handling
-            st.number_input(
-                f"Amount ({unit})", 
-                min_value=0.1, 
-                value=st.session_state.get('log_amount_value', 1.0), # Use the saved value
-                step=0.1, 
-                key="log_amount_input", # Assign a key for the callback
-                on_change=update_log_amount # The callback function
-            )
-            
-            if st.button("Log Food"):
-                amount = st.session_state.get('log_amount_value', 1.0) # Get the final value
+            submitted = st.form_submit_button("Log Food")
+            if submitted:
                 base_amount = 100.0 if '100g' in base_amount_str else 1.0
                 multiplier = amount / base_amount if base_amount != 1.0 else amount
-                new_entry = {
-                    'date': datetime.now(),
-                    'name': food_name_display,
-                    'amount_logged': f"{amount} {unit}",
-                    'calories': food_data['calories'] * multiplier,
-                    'protein': food_data['protein'] * multiplier,
-                    'carbs': food_data['carbs'] * multiplier,
-                    'fat': food_data['fat'] * multiplier,
-                }
-                st.session_state.all_logs.insert(0, new_entry)
+                
+                st.session_state.all_logs.insert(0, {
+                    'date': datetime.now(), 'name': food_name_display, 'amount_logged': f"{amount} {unit}",
+                    'calories': food_data['calories'] * multiplier, 'protein': food_data['protein'] * multiplier,
+                    'carbs': food_data['carbs'] * multiplier, 'fat': food_data['fat'] * multiplier,
+                })
                 save_daily_log(st.session_state.all_logs)
                 
-                # Clean up session state keys
-                del st.session_state.food_to_log
-                if 'log_amount_value' in st.session_state:
-                    del st.session_state.log_amount_value
-                if 'log_amount_input' in st.session_state:
-                    del st.session_state.log_amount_input
+                del st.session_state['food_to_log']
                 st.rerun()
-
         log_food_dialog()
 
     # --- Main Layout (Database and Log) ---
