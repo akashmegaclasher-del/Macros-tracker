@@ -228,8 +228,16 @@ def main():
                     elif 'slice' in base_amount_str: unit = "slice(s)"
                     elif 'medium' in base_amount_str: unit = "item(s)"
 
-                    amount = st.number_input(f"Amount ({unit})", min_value=0.1, value=1.0, step=0.1)
-                    submit = st.form_submit_button("Log Food")
+                    if "amount_input" not in st.session_state:
+    st.session_state.amount_input = 1.0
+
+amount = st.number_input(
+    f"Amount ({unit})",
+    min_value=0.1,
+    step=0.1,
+    key="amount_input"
+)
+submit = st.form_submit_button("Log Food")
 
                 if submit:
                     base_amount = 100.0 if '100g' in base_amount_str else 1.0
